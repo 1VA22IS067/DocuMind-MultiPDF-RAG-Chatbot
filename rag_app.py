@@ -1,203 +1,419 @@
+
 import streamlit as st
+import hashlib
+
 from langchain_core.messages import AIMessage, HumanMessage
 
 import rag_backend as backend
 
+
 # ---------------------------------------------------------------------------
-# Page config
+# Page Configuration
 # ---------------------------------------------------------------------------
+
 st.set_page_config(
     page_title="DocuMind",
     page_icon="🧠",
     layout="wide",
 )
 
+
 # ---------------------------------------------------------------------------
 # Custom CSS
 # ---------------------------------------------------------------------------
+
 st.markdown(
     """
     <style>
-    .api-key-note {
-        font-size: 0.75rem;
+    .main-title {
+        text-align: center;
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 0;
+    }
+
+    .tagline {
+        text-align: center;
+        font-size: 1.15rem;
         color: #888;
-        margin-top: -8px;
-        margin-bottom: 8px;
+        margin-top: 5px;
+        margin-bottom: 30px;
     }
-    .status-pill {
-        display: inline-block;
-        padding: 2px 10px;
-        border-radius: 999px;
-        font-size: 0.72rem;
-        font-weight: 600;
-        letter-spacing: 0.04em;
+
+    .section-gap {
+        margin-top: 20px;
     }
-    .pill-ok   { background: #d4edda; color: #155724; }
-    .pill-warn { background: #fff3cd; color: #856404; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+
 # ---------------------------------------------------------------------------
-# Session-state bootstrap
+# Session State
 # ---------------------------------------------------------------------------
-def _init_state():
+
+def init_state():
+
     defaults = {
         "message_history": [],
-        "uploaded_file_name": None,
-        "llm_ready": False,
         "groq_api_key": "",
+        "llm_ready": False,
+        "processed_file_signature": None,
     }
-    for key, val in defaults.items():
+
+    for key, value in defaults.items():
+
         if key not in st.session_state:
-            st.session_state[key] = val
+            st.session_state[key] = value
 
-_init_state()
+
+init_state()
+
 
 # ---------------------------------------------------------------------------
-# Sidebar — API Key
+# Welcome Screen
 # ---------------------------------------------------------------------------
-st.sidebar.title("🧠 DocuMind")
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🔑 Groq API Key")
 
-api_key_input = st.sidebar.text_input(
-    label="Enter your Groq API key",
-    type="password",
-    placeholder="gsk_…",
-    value=st.session_state["groq_api_key"],
-    help="Your key is kept in session memory only — never stored or logged.",
-)
-st.sidebar.markdown(
-    "<p class='api-key-note'>Your key is used only for this session.</p>",
+st.markdown(
+    """
+    <div class="main-title">🧠 DocuMind</div>
+    <div class="tagline">
+        A smarter way to find what matters.
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
-if api_key_input and api_key_input != st.session_state["groq_api_key"]:
-    st.session_state["groq_api_key"] = api_key_input
-    with st.sidebar:
-        with st.spinner("Connecting to Groq…"):
-            ok, msg = backend.init_llm(api_key_input)
-    if ok:
-        st.session_state["llm_ready"] = True
-        st.sidebar.success(" API key accepted")
-    else:
-        st.session_state["llm_ready"] = False
-        st.sidebar.error(f" {msg}")
+st.divider()
 
-elif api_key_input and not st.session_state["llm_ready"]:
-    ok, msg = backend.init_llm(api_key_input)
-    if ok:
-        st.session_state["llm_ready"] = True
 
 # ---------------------------------------------------------------------------
-# Sidebar — New Chat button
+# Step 1: Groq API Connection
 # ---------------------------------------------------------------------------
-st.sidebar.markdown("---")
-if st.sidebar.button(" New Chat", use_container_width=True):
-    st.session_state["message_history"] = []
 
-# ---------------------------------------------------------------------------
-# Sidebar — PDF Upload
-# ---------------------------------------------------------------------------
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📄 Upload PDF")
+st.header("🔑 Connect to DocuMind")
 
-uploaded_file = st.sidebar.file_uploader(
-    label="Upload a PDF document",
-    type=["pdf"],
-    help="The chatbot will answer questions based on the content of this PDF.",
+st.write(
+    "To get started, connect your Groq API key. "
+    "This allows DocuMind to understand your questions "
+    "and generate answers from your documents."
 )
 
-if uploaded_file is not None:
-    if uploaded_file.name != st.session_state["uploaded_file_name"]:
-        with st.sidebar.status("Processing PDF…", expanded=False):
-            ok, msg = backend.load_pdf(uploaded_file.read(), uploaded_file.name)
-        if ok:
-            st.session_state["uploaded_file_name"] = uploaded_file.name
-            st.sidebar.success(f" Ready: `{uploaded_file.name}`")
-        else:
-            st.sidebar.error(f" {msg}")
-    else:
-        st.sidebar.success(f" Ready: `{uploaded_file.name}`")
-else:
-    if not backend.rag_ready:
-        st.sidebar.info("Upload a PDF to enable document Q&A.")
+api_key_input = st.text_input(
+    "Enter your Groq API key",
+    type="password",
+    placeholder="Enter your Groq API key here",
+    key="groq_api_key_input",
+    help="Your API key is kept in session memory only.",
+)
+
 
 # ---------------------------------------------------------------------------
-# Main area — Status bar
+# Groq API Key Instructions
 # ---------------------------------------------------------------------------
-col_llm, col_pdf = st.columns([1, 1])
-with col_llm:
-    if st.session_state["llm_ready"]:
-        st.markdown("<span class='status-pill pill-ok'>🟢 LLM connected</span>", unsafe_allow_html=True)
-    else:
-        st.markdown("<span class='status-pill pill-warn'>🟡 Enter Groq API key</span>", unsafe_allow_html=True)
-with col_pdf:
-    if backend.rag_ready:
-        st.markdown(f"<span class='status-pill pill-ok'>📄 {backend.loaded_filename}</span>", unsafe_allow_html=True)
-    else:
-        st.markdown("<span class='status-pill pill-warn'>📂 No PDF loaded</span>", unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
+with st.expander("❓ How do I get a Groq API key?"):
 
-# ---------------------------------------------------------------------------
-# Main area — Welcome screen
-# ---------------------------------------------------------------------------
-if not st.session_state["message_history"]:
-    st.markdown(
-        """
-        <div style='text-align:center; margin-top:120px; color:#888;'>
-            <div style='font-size:3rem;'>🧠</div>
-            <h2 style='font-weight:600; margin-bottom:8px;'>DocuMind</h2>
-            <p style='font-size:1rem;'>Enter your Groq API key → Upload a PDF → Start asking questions.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.write(
+        "Follow these simple steps to connect DocuMind."
     )
 
-# ---------------------------------------------------------------------------
-# Main area — Chat history
-# ---------------------------------------------------------------------------
-for message in st.session_state["message_history"]:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    st.markdown(
+        """
+        **Step 1:** Visit the
+        [Groq Console](https://console.groq.com/).
+
+        **Step 2:** Create an account or sign in.
+
+        **Step 3:** Open the API Keys section.
+
+        **Step 4:** Select Create API Key.
+
+        **Step 5:** Copy your generated API key.
+
+        **Step 6:** Return to DocuMind and paste the key
+        into the input field above.
+        """
+    )
+
+    st.info(
+        "Keep your API key private. Never share it with anyone."
+    )
+
 
 # ---------------------------------------------------------------------------
-# Main area — Chat input
+# Connect Button
 # ---------------------------------------------------------------------------
-ready = st.session_state["llm_ready"]
 
-placeholder = (
-    "Ask a question about your document…"
-    if ready
-    else "Enter your Groq API key in the sidebar to start chatting."
+if st.button("Connect to Groq", use_container_width=True):
+
+    if not api_key_input.strip():
+
+        st.error("Please enter your Groq API key.")
+
+        st.session_state["llm_ready"] = False
+
+    else:
+
+        with st.spinner("Connecting to Groq..."):
+
+            ok, msg = backend.init_llm(api_key_input.strip())
+
+        if ok:
+
+            st.session_state["groq_api_key"] = api_key_input.strip()
+            st.session_state["llm_ready"] = True
+
+            st.success("Connected successfully! DocuMind is ready.")
+
+        else:
+
+            st.session_state["llm_ready"] = False
+
+            st.error(msg)
+
+
+if st.session_state["llm_ready"]:
+
+    st.success("🟢 Groq AI is connected.")
+
+
+st.divider()
+
+
+# ---------------------------------------------------------------------------
+# Step 2: Multiple PDF Upload
+# ---------------------------------------------------------------------------
+
+st.header("📄 Upload Your Documents")
+
+st.write(
+    "Choose one or multiple PDF documents. "
+    "DocuMind will process them so you can find information easily."
 )
 
-user_input = st.chat_input(placeholder, disabled=not ready)
+uploaded_files = st.file_uploader(
+    "Choose PDF files",
+    type=["pdf"],
+    accept_multiple_files=True,
+    help="You can select multiple PDF documents.",
+)
+
+
+# ---------------------------------------------------------------------------
+# Generate File Signature
+# ---------------------------------------------------------------------------
+
+def get_file_signature(files):
+
+    signature = []
+
+    for file in files:
+
+        file_bytes = file.getvalue()
+
+        file_hash = hashlib.sha256(file_bytes).hexdigest()
+
+        signature.append(
+            (file.name, len(file_bytes), file_hash)
+        )
+
+    return tuple(signature)
+
+
+current_signature = (
+    get_file_signature(uploaded_files)
+    if uploaded_files
+    else None
+)
+
+
+# ---------------------------------------------------------------------------
+# Display Selected Files
+# ---------------------------------------------------------------------------
+
+if uploaded_files:
+
+    st.write(f"**{len(uploaded_files)} PDF file(s) selected:**")
+
+    for file in uploaded_files:
+
+        st.write(f"📄 {file.name}")
+
+
+# ---------------------------------------------------------------------------
+# Process PDFs Button
+# ---------------------------------------------------------------------------
+
+if st.button(
+    "Process PDFs",
+    use_container_width=True,
+    disabled=not uploaded_files or not st.session_state["llm_ready"],
+):
+
+    files_to_process = [
+        (file.getvalue(), file.name)
+        for file in uploaded_files
+    ]
+
+    with st.spinner("Processing your documents..."):
+
+        ok, msg = backend.load_pdfs(files_to_process)
+
+    if ok:
+
+        st.session_state["processed_file_signature"] = current_signature
+
+        # Clear old conversation when new documents are loaded
+        st.session_state["message_history"] = []
+
+        st.success(msg)
+
+    else:
+
+        st.session_state["processed_file_signature"] = None
+
+        st.error(msg)
+
+
+# ---------------------------------------------------------------------------
+# Document Status
+# ---------------------------------------------------------------------------
+
+documents_ready = (
+    backend.rag_ready
+    and current_signature is not None
+    and current_signature == st.session_state["processed_file_signature"]
+)
+
+if documents_ready:
+
+    st.success(
+        f"🟢 {len(backend.loaded_filenames)} PDF document(s) ready."
+    )
+
+elif uploaded_files:
+
+    st.info(
+        "Your selected PDFs are not processed yet. "
+        "Click Process PDFs to continue."
+    )
+
+else:
+
+    st.info("Upload your PDF documents to get started.")
+
+
+st.divider()
+
+
+# ---------------------------------------------------------------------------
+# Step 3: Ask Questions
+# ---------------------------------------------------------------------------
+
+st.header("💬 Ask DocuMind")
+
+st.write(
+    "Ask questions about your uploaded documents "
+    "and get answers based on their content."
+)
+
+
+# ---------------------------------------------------------------------------
+# New Chat Button
+# ---------------------------------------------------------------------------
+
+if st.button("➕ New Chat"):
+
+    st.session_state["message_history"] = []
+
+    st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Display Chat History
+# ---------------------------------------------------------------------------
+
+for message in st.session_state["message_history"]:
+
+    with st.chat_message(message["role"]):
+
+        st.markdown(message["content"])
+
+
+# ---------------------------------------------------------------------------
+# Chat Input
+# ---------------------------------------------------------------------------
+
+ready = (
+    st.session_state["llm_ready"]
+    and documents_ready
+)
+
+placeholder = (
+    "Ask a question about your documents..."
+    if ready
+    else "Connect Groq and process your PDFs to start chatting."
+)
+
+user_input = st.chat_input(
+    placeholder,
+    disabled=not ready,
+)
+
+
+# ---------------------------------------------------------------------------
+# Generate AI Response
+# ---------------------------------------------------------------------------
 
 if user_input and ready:
-    st.session_state["message_history"].append({"role": "user", "content": user_input})
+
+    st.session_state["message_history"].append(
+        {
+            "role": "user",
+            "content": user_input,
+        }
+    )
+
     with st.chat_message("user"):
+
         st.markdown(user_input)
 
     with st.chat_message("assistant"):
-        def _stream_response():
-            for chunk, _meta in backend.chatbot.stream(
+
+        def stream_response():
+
+            for chunk, metadata in backend.chatbot.stream(
                 {"messages": [HumanMessage(content=user_input)]},
                 stream_mode="messages",
             ):
+
                 if (
                     isinstance(chunk, AIMessage)
                     and chunk.content
                     and not getattr(chunk, "tool_calls", None)
                 ):
-                    yield chunk.content
 
-        ai_response = st.write_stream(_stream_response())
+                    if isinstance(chunk.content, str):
 
-    if ai_response:
-        st.session_state["message_history"].append(
-            {"role": "assistant", "content": ai_response}
-        )
+                        yield chunk.content
+
+        try:
+
+            ai_response = st.write_stream(stream_response())
+
+            if ai_response:
+
+                st.session_state["message_history"].append(
+                    {
+                        "role": "assistant",
+                        "content": ai_response,
+                    }
+                )
+
+        except Exception as exc:
+
+            st.error(
+                f"Something went wrong while generating the answer: {exc}"
+            )
